@@ -1,0 +1,3 @@
+- insert:
+    - id: github-auth
+      name: 'dsh-github-auth'

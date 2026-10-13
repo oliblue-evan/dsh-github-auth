@@ -1,0 +1,69 @@
+{
+  "name": "dsh-github-auth",
+  "version": "0.2.1",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "description": "GitHub 授权管理：查看 gh 账号、权限与凭据来源，网页登录、切换账号、本机退出，检查 SSH 与仓库权限。",
+  "license": "MIT",
+  "icon": "assets/icon.svg",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./assets/*": "./assets/*"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib",
+    "locale",
+    "assets",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "jsdom": "^30.1.2"
+  },
+  "disclosure": {
+    "cloud": true,
+    "network": [
+      "https://github.com",
+      "https://api.github.com",
+      "ssh://git@github.com:22"
+    ],
+    "offlineMode": false,
+    "permissions": [
+      "process:spawn:gh auth and read-only probes",
+      "credentials:manage:GitHub CLI",
+      "filesystem:GitHub CLI config via gh"
+    ],
+    "retention": "gh manages credentials; plugin only holds transient state in memory",
+    "telemetry": false
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oliblue-evan/dsh-github-auth.git"
+  },
+  "author": "李敖 (oliblue)"
+}
