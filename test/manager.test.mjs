@@ -80,3 +80,43 @@ test('环境变量来源授权不允许本机账号操作', async () => {
   await assert.rejects(f.manager.logout('one', true), /环境变量/);
   f.manager.dispose();
 });
+
+test('首次缺少工具时重新检测手动安装，无需重启', async () => {
+ let found=false;
+ const manager=createManager({findGh:async()=>found?'/fake/gh':null, run:async(_binary,args)=>({code:0,stdout:args[0]==='--version'?'gh version 2.99.0':JSON.stringify({hosts:{}})})});
+ assert.equal((await manager.state()).ghFound,false);
+ found=true;
+ assert.equal((await manager.state(true)).ghFound,true);
+ manager.dispose();
+});
+test('已有 CLI 直接复用，一键准备不下载或改动授权', async () => {
+ let calls=0;
+ const manager=createManager({findGh:async()=>'/fake/gh',run:async()=>({code:0,stdout:'gh version test'}),installGh:async()=>{calls++;}});
+ await assert.rejects(manager.install(false), /确认/);
+ assert.match((await manager.install(true)).message,/已检测/);
+ assert.equal(calls,0);manager.dispose();
+});
+test('安装后台进度可查询，连点去重，完成后直接读取授权', async () => {
+ let finish, installed=false;
+ const manager=createManager({findGh:async()=>installed?'/fake/gh':null,
+  run:async(_binary,args)=>({code:0,stdout:args[0]==='--version'?'gh version 2.99.0':JSON.stringify({hosts:{}})}),
+  installGh:({onProgress})=>new Promise((resolve)=>{onProgress({phase:'下载官方安装包',percent:25});finish=()=>{installed=true;resolve({binary:'/fake/gh',version:'gh version 2.99.0',message:'ready'});};})});
+ const started=await manager.install(true);
+ assert.equal(started.installation.status,'running');
+ await assert.rejects(manager.install(true),/正在进行/);
+ assert.equal((await manager.state()).installation.percent,25);
+ finish();await new Promise((resolve)=>setImmediate(resolve));
+ const after=await manager.state();assert.equal(after.ghFound,true);assert.equal(after.installation.status,'completed');assert.equal(after.operationBusy,false);
+ manager.dispose();
+});
+test('取消或停用时中止安装，释放操作锁；失败后可重试', async () => {
+ const signals=[];
+ const manager=createManager({findGh:async()=>null,installGh:({signal})=>new Promise((_resolve,reject)=>{signals.push(signal);signal.addEventListener('abort',()=>reject(new DOMException('cancelled','AbortError')));})});
+ const job=await manager.install(true);
+ assert.throws(()=>manager.cancelInstall('other'),/没有可取消/);
+ manager.cancelInstall(job.installation.id);await new Promise((resolve)=>setImmediate(resolve));
+ assert.equal(signals[0].aborted,true);assert.equal((await manager.state()).operationBusy,false);
+ assert.equal((await manager.state()).installation.status,'cancelled');
+ await manager.install(true);manager.dispose();await new Promise((resolve)=>setImmediate(resolve));
+ assert.equal(signals[1].aborted,true);await assert.rejects(manager.install(true),/停用/);
+});

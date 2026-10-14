@@ -17,6 +17,7 @@ window.__ModuleLoader__.load({
 .ga-root .ga-advanced{border-top:1px solid var(--ga-line);padding-top:10px}.ga-root .ga-advanced>summary{display:flex;align-items:center;gap:6px;cursor:pointer;list-style:none;color:var(--ga-muted);font-size:12px;padding:3px 0}.ga-root summary::-webkit-details-marker{display:none}.ga-root .ga-chevron{transition:transform .12s ease}.ga-root .ga-advanced[open]>summary .ga-chevron{transform:rotate(90deg)}.ga-root .ga-advanced-body{display:flex;flex-direction:column;gap:10px;padding:12px 0 2px}.ga-root .ga-diagnostics{font-size:11px;color:var(--ga-muted);overflow-wrap:anywhere}.ga-root .ga-empty{text-align:center;padding:24px 14px;gap:8px}.ga-root .ga-empty>.ga-icon{width:28px;height:28px;margin:0 auto 4px;color:var(--ga-muted)}
 @media(max-width:520px){.ga-root .ga-head{align-items:flex-start}.ga-root .ga-account-info{padding-left:0}.ga-root .ga-scopes{margin-left:0;flex-basis:100%}.ga-root .ga-badges{max-width:100%;justify-content:flex-start}.ga-root .ga-account-head{flex-wrap:wrap}.ga-root .ga-tools .ga-input{flex-basis:100%}.ga-root .ga-check-row{align-items:flex-start}}
 @media(prefers-reduced-motion:reduce){.ga-root .ga-spinning{animation:none}.ga-root button,.ga-root .ga-chevron{transition:none}}
+.ga-root .ga-setup{gap:16px}.ga-root .ga-setup h3{font-size:15px}.ga-root .ga-steps{display:flex;gap:12px;margin:0;padding:0;list-style:none;flex-wrap:wrap}.ga-root .ga-steps li{flex:1;min-width:120px;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ga-muted)}.ga-root .ga-steps [data-active=true]{color:var(--ga-accent)}.ga-root .ga-step-number{display:grid;place-items:center;width:24px;height:24px;flex:none;border:1px solid var(--ga-line);border-radius:50%;corner-shape:round;font-size:11px}.ga-root .ga-install-progress{display:grid;gap:8px}.ga-root .ga-bar{height:5px;border-radius:5px;background:var(--ga-line);overflow:hidden}.ga-root .ga-bar span{display:block;height:100%;background:var(--ga-accent)}.ga-root .ga-install-help{border-top:1px solid var(--ga-line);padding-top:12px}.ga-root .ga-install-help>summary{cursor:pointer;font-size:12px;color:var(--ga-muted)}.ga-root .ga-install-help p{margin-top:8px}
 `;
     // 插件页与全局设置会独立挂载。按键复用作用域样式，不随旧插件实例
     // dispose 删除，避免宿主热更新期间出现「页面还在、样式没了」。
@@ -105,13 +106,14 @@ window.__ModuleLoader__.load({
         return () => { alive.current = false; controllers.current.forEach((controller) => controller.abort()); };
       }, []);
       const loginStatus = state?.login?.status;
+      const installStatus = state?.installation?.status;
       useEffect(() => {
-        if (!['starting', 'waiting'].includes(loginStatus) && !state?.operationBusy) return undefined;
+        if (!['starting', 'waiting'].includes(loginStatus) && installStatus !== 'running' && !state?.operationBusy) return undefined;
         let stopped = false; let timer;
         const poll = async () => { if (stopped) return; await load(); if (!stopped) timer = window.setTimeout(poll, 1500); };
         timer = window.setTimeout(poll, 1000);
         return () => { stopped = true; window.clearTimeout(timer); };
-      }, [loginStatus, state?.operationBusy]);
+      }, [loginStatus, installStatus, state?.operationBusy]);
 
       function ask(next, event) {
         returnFocus.current = event?.currentTarget || null;
@@ -162,6 +164,29 @@ window.__ModuleLoader__.load({
       const authDisabled = disabled || state?.environmentAuth;
       const active = state?.accounts?.find((account) => account.active);
       const isWaiting = ['starting', 'waiting'].includes(loginStatus);
+      const isInstalling = installStatus === 'running';
+      const setup = state && !isWaiting && (!state.ghFound || state.accounts.length === 0) ? h('section', { className: 'ga-card ga-setup', 'aria-label': '首次连接 GitHub' },
+        h('h3', null, state.ghFound ? '工具已就绪，连接你的 GitHub 账号' : '连接 GitHub，从这里开始'),
+        h('ol', { className: 'ga-steps', 'aria-label': '准备步骤' },
+          ...['准备工具', '登录账号', '开始使用'].map((label, index) => h('li', { key: label, 'data-active': index === (state.ghFound ? 1 : 0), 'aria-current': index === (state.ghFound ? 1 : 0) ? 'step' : undefined },
+            h('span', { className: 'ga-step-number', 'aria-hidden': true }, index === 0 && state.ghFound ? '✓' : index + 1), label))),
+        !state.ghFound ? h(React.Fragment, null,
+          h('p', { className: 'ga-muted' }, '从 GitHub 官方下载并校验 GitHub CLI，安装到当前用户目录。无需 Homebrew、管理员权限或重启 DSH。'),
+          state.setup ? h('p', { className: 'ga-muted' }, '已识别系统 · ' + state.setup.platform + ' · ' + state.setup.arch) : null,
+          isInstalling ? h('div', { className: 'ga-install-progress', role: 'status' },
+            h('div', { className: 'ga-result-head' }, h('span', null, state.installation.phase), h('span', null, state.installation.percent === null ? '' : state.installation.percent + '%')),
+            h('div', { className: 'ga-bar', role: 'progressbar', 'aria-label': state.installation.phase, 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': state.installation.percent ?? undefined },
+              h('span', { style: { width: (state.installation.percent ?? 0) + '%' } })),
+            h('div', { className: 'ga-tools' }, button('取消准备', () => act({ action: 'cancel-install', id: state.installation.id }), { disabled: actionBusy, className: 'ga-quiet' }))) :
+            h('div', { className: 'ga-tools' },
+              state.setup?.supported !== false ? button(installStatus === 'failed' ? '重新准备工具' : '一键准备工具', () => act({ action: 'install', confirmed: true }), { className: 'ga-primary', disabled: actionBusy || loading || state.operationBusy, icon: 'plus' }) : link('查看官方安装方式', 'https://cli.github.com/'),
+              button('我已安装，重新检测', () => { if (!loading && !actionBusy) { setLoading(true); load(true); } }, { className: 'ga-quiet', disabled: actionBusy || loading || state.operationBusy, icon: 'refresh' })),
+          ['failed', 'cancelled'].includes(installStatus) ? h('p', { className: 'ga-notice' + (installStatus === 'failed' ? ' ga-error' : ''), role: installStatus === 'failed' ? 'alert' : 'status' }, state.installation.message) : null,
+          h('details', { className: 'ga-install-help' }, h('summary', null, '下载失败或希望手动安装？'),
+            h('p', { className: 'ga-muted' }, '可按官方说明安装 GitHub CLI，然后点击「我已安装，重新检测」，无需重启。'),
+            h('div', { className: 'ga-tools' }, link('GitHub CLI 安装说明', 'https://cli.github.com/')))) :
+          h(React.Fragment, null, h('p', { className: 'ga-muted' }, '工具已准备好。下一步在 GitHub 官方网页选择账号并确认授权。'),
+            button('连接 GitHub 账号', (event) => ask({ action: 'login' }, event), { className: 'ga-primary', disabled: authDisabled, icon: 'plus', 'data-add-account': true }))) : null;
       const confirmation = confirm ? h('section', { ref: confirmRef, tabIndex: -1, className: 'ga-card ga-confirm', 'data-danger': confirm.action === 'logout', 'aria-label': '确认授权操作',
         onKeyDown: (event) => { if (event.key === 'Escape' && !actionBusy) { event.preventDefault(); event.stopPropagation(); cancelConfirmation(); } } },
         h('h3', null, confirm.action === 'login' ? '在 GitHub 登录或添加账号' : confirm.action === 'logout' ? '退出本机账号 ' + confirm.login : '切换当前账号为 ' + confirm.login),
@@ -179,12 +204,12 @@ window.__ModuleLoader__.load({
           h('div', null, h('h2', null, '授权概览'), h('p', { className: 'ga-description' }, active ? '当前账号 · ' + active.login : '管理本机 GitHub 账号与连接')),
           h('div', { className: 'ga-tools' },
             button(loading ? '刷新中…' : '刷新状态', () => { if (!loading && !actionBusy) { setLoading(true); load(true); } }, { disabled: loading || actionBusy, className: 'ga-quiet', icon: 'refresh', spinning: loading }),
-            state?.ghFound ? button('登录 / 添加账号', (event) => ask({ action: 'login' }, event), { className: 'ga-primary', disabled: authDisabled, icon: 'plus', 'data-add-account': true }) : null)),
+            state?.ghFound && state.accounts.length > 0 ? button('登录 / 添加账号', (event) => ask({ action: 'login' }, event), { className: 'ga-primary', disabled: authDisabled, icon: 'plus', 'data-add-account': true }) : null)),
         error ? h('div', { className: 'ga-notice ga-error', role: 'alert' }, error) : null,
         notice ? h('div', { className: 'ga-notice', role: 'status' }, notice) : null,
         state?.environmentAuth ? h('p', { className: 'ga-notice' }, '授权由 GH_TOKEN / GITHUB_TOKEN 控制。可查看和检查连接，账号变更请在启动环境中处理。') : null,
         loading && !state ? h('p', { className: 'ga-muted', role: 'status' }, '正在检查账号授权…') : null,
-        state && !state.ghFound ? h('section', { className: 'ga-card ga-empty' }, icon('terminal'), h('h3', null, '尚未安装 GitHub CLI'), h('p', { className: 'ga-muted' }, '安装 gh 后重启 DSH，即可读取现有账号。'), h('div', { className: 'ga-tools', style: { justifyContent: 'center' } }, link('GitHub CLI 安装说明', 'https://cli.github.com/'))) : null,
+        setup,
         state?.ghFound ? h(React.Fragment, null,
           confirmation,
           isWaiting ? h('section', { className: 'ga-card ga-confirm', role: 'status' },
@@ -196,7 +221,7 @@ window.__ModuleLoader__.load({
             h('div', { className: 'ga-tools' }, link('打开 GitHub 授权页面', 'https://github.com/login/device'), button(busyAction === 'cancel' ? '正在取消…' : '取消等待', () => act({ action: 'cancel', id: state.login.id }), { disabled: actionBusy, className: 'ga-quiet' })),
             h('p', { className: 'ga-muted' }, '完成后自动更新。取消只停止本机等待，已批准的授权需在 GitHub 撤销。')) : null,
           state.login && !isWaiting ? h('p', { className: 'ga-notice' + (state.login.status === 'failed' ? ' ga-error' : ''), role: 'status' }, state.login.message) : null,
-          state.accounts.length === 0 && !state.error ? h('section', { className: 'ga-card ga-empty' }, icon('shield'), h('h3', null, '此电脑尚未登录 GitHub'), h('p', { className: 'ga-muted' }, '添加账号后，可查看授权范围并检查仓库权限。')) : null,
+          state.accounts.length === 0 && !state.error && !isWaiting ? h('p', { className: 'ga-muted' }, '此电脑尚未登录 GitHub。连接后可查看授权范围并检查仓库权限。') : null,
           state.error ? h('p', { className: 'ga-notice ga-error', role: 'alert' }, state.error) : null,
           ...state.accounts.map((account) => h('article', { className: 'ga-card ga-account', key: account.login, 'aria-label': account.login + ' 的授权' },
             h('div', { className: 'ga-account-head' }, h('div', { className: 'ga-avatar', 'aria-hidden': true }, account.login.slice(0, 2).toUpperCase()),
@@ -212,7 +237,7 @@ window.__ModuleLoader__.load({
               !account.active ? button('设为当前账号', (event) => ask({ action: 'switch', login: account.login }, event), { className: 'ga-primary', disabled: authDisabled || /^(?:GH_TOKEN|GITHUB_TOKEN)$|environment/i.test(account.tokenSource) }) : null,
               button('重新登录授权', (event) => ask({ action: 'login' }, event), { className: 'ga-quiet', disabled: authDisabled }),
               button('退出本机', (event) => ask({ action: 'logout', login: account.login }, event), { className: 'ga-danger', disabled: authDisabled || /^(?:GH_TOKEN|GITHUB_TOKEN)$|environment/i.test(account.tokenSource) })))),
-          h('section', { className: 'ga-card', 'aria-label': '连接检查' },
+          state.accounts.length > 0 ? h('section', { className: 'ga-card', 'aria-label': '连接检查' },
             h('div', { className: 'ga-check-row' }, h('div', { className: 'ga-check-copy' }, icon('terminal'), h('div', null, h('h3', null, 'SSH 推送连接'),
               h('p', { className: 'ga-check-state' }, ssh ? ssh.success ? '身份 · ' + ssh.login : '连接未通过' : '尚未检查 · 与网页授权分别验证'))),
               button(busyAction === 'ssh' ? '检查中…' : '检查 SSH 连接', () => act({ action: 'ssh' }), { disabled, icon: busyAction === 'ssh' ? 'refresh' : undefined, spinning: busyAction === 'ssh' })),
@@ -230,13 +255,13 @@ window.__ModuleLoader__.load({
             repoResult ? h('div', { className: 'ga-notice', role: 'status' },
               h('div', { className: 'ga-result-head' }, h('strong', null, repoResult.name), h('span', { className: 'ga-badge' + (repoResult.canWrite ? ' ga-ok' : '') }, repoResult.canWrite ? '可写入' : '无写入权限')),
               h('p', { className: 'ga-result-note' }, (repoResult.private ? '私有' : '公开') + '仓库 · ' + (permissionLabel[repoResult.permission] || repoResult.permission) + ' · 当前 API 账号',
-                h('br'), 'Git 推送还取决于 SSH 身份与分支保护。')) : null),
-          h('details', { className: 'ga-advanced' }, h('summary', null, icon('chevron', 'ga-chevron'), '远端授权与高级选项'),
+                h('br'), 'Git 推送还取决于 SSH 身份与分支保护。')) : null) : null,
+          state.accounts.length > 0 ? h('details', { className: 'ga-advanced' }, h('summary', null, icon('chevron', 'ga-chevron'), '远端授权与高级选项'),
             h('div', { className: 'ga-advanced-body' },
               h('p', { className: 'ga-muted' }, '本机退出只移除 gh 登录。撤销 GitHub CLI 应用授权可能影响其他设备；SSH 密钥单独管理。'),
               h('div', { className: 'ga-tools' }, link('GitHub 应用授权 / 撤销', 'https://github.com/settings/applications'), link('SSH 密钥管理', 'https://github.com/settings/keys')),
               h('p', { className: 'ga-diagnostics' }, state.ghVersion + ' · ' + state.ghPath),
-              h('p', { className: 'ga-diagnostics' }, '凭据由 gh 管理，插件不展示完整令牌、不接收密码、不自动上传 SSH 密钥。')))) : null);
+              h('p', { className: 'ga-diagnostics' }, '凭据由 gh 管理，插件不展示完整令牌、不接收密码、不自动上传 SSH 密钥。'))) : null) : null);
     }
     return {
       inject: ['slots', 'locale'],

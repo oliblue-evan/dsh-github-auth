@@ -1,1 +1,6 @@
-{"meta":{"title":"GitHub Authorization","description":"Manage local GitHub CLI accounts, permissions, browser login, switching and logout; check SSH and repository access."}}
+{
+  "meta": {
+    "title": "GitHub Authorization",
+    "description": "Prepare GitHub CLI with one click, sign in and manage local accounts and scopes; check SSH identity and repository access."
+  }
+}

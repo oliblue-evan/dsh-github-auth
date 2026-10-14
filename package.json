@@ -1,10 +1,10 @@
 {
   "name": "dsh-github-auth",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "main": "./index.js",
-  "description": "GitHub 授权管理：查看 gh 账号、权限与凭据来源，网页登录、切换账号、本机退出，检查 SSH 与仓库权限。",
+  "description": "一键准备工具并登录 GitHub；管理账号、权限与本机退出，检查 SSH 和仓库访问。",
   "license": "MIT",
   "icon": "assets/icon.svg",
   "exports": {
@@ -50,20 +50,28 @@
     "network": [
       "https://github.com",
       "https://api.github.com",
-      "ssh://git@github.com:22"
+      "ssh://git@github.com:22",
+      "https://release-assets.githubusercontent.com",
+      "https://objects.githubusercontent.com",
+      "https://github-releases.githubusercontent.com"
     ],
     "offlineMode": false,
     "permissions": [
       "process:spawn:gh auth and read-only probes",
       "credentials:manage:GitHub CLI",
-      "filesystem:GitHub CLI config via gh"
+      "filesystem:GitHub CLI config via gh",
+      "process:spawn:official gh version check and archive extraction",
+      "filesystem:write:user-local-bin-gh"
     ],
-    "retention": "gh manages credentials; plugin only holds transient state in memory",
+    "retention": "gh manages credentials; official CLI stays in user-local-bin; download temporary files are removed",
     "telemetry": false
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/oliblue-evan/dsh-github-auth.git"
   },
-  "author": "李敖 (oliblue)"
+  "author": "李敖 (oliblue)",
+  "engines": {
+    "node": ">=18"
+  }
 }

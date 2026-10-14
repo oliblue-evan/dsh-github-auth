@@ -7,7 +7,7 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Simulate } from 'react-dom/test-utils';
 
-function fixture() {
+function fixture(overrides = {}) {
   const dom = new JSDOM('<html><head></head><body><main></main></body></html>', { url: 'http://localhost' });
   const prior = {};
   for (const key of ['window', 'document', 'IS_REACT_ACT_ENVIRONMENT']) {
@@ -18,6 +18,7 @@ function fixture() {
   const requests = [], effects = [], signals = [], extraRoots = [];
   const state = { ok: true, nonce: 'fresh', ghFound: true, ghVersion: 'gh version test', ghPath: '~/.local/bin/gh', environmentAuth: false,
     operationBusy: false, login: null, accounts: [{ host: 'github.com', login: 'one', active: true, state: 'success', tokenSource: 'keyring', gitProtocol: 'ssh', scopes: ['repo', 'gist'] }] };
+  Object.assign(state, overrides);
   let expiredNonce = false; let blocked = false; let failure = null;
   const fetcher = async (_url, options = {}) => {
     signals.push(options.signal);
@@ -28,6 +29,8 @@ function fixture() {
     else if (expiredNonce && body) { expiredNonce = false; status = 403; result = { ok: false, error: 'refresh required' }; }
     else if (body?.action === 'login') { state.login = { id: 'job', status: 'waiting', code: 'ABCD-1234', message: '等待确认' }; state.operationBusy = true; result = { ok: true, login: state.login }; }
     else if (body?.action === 'cancel') { state.login = { ...state.login, code: null, status: 'cancelled', message: '已取消' }; state.operationBusy = false; result = { ok: true }; }
+    else if (body?.action === 'install') { state.installation = { id: 'install-job', status: 'running', phase: '下载官方安装包', percent: 25 }; state.operationBusy = true; result = { ok: true, installation: state.installation }; }
+    else if (body?.action === 'cancel-install') { state.installation = { ...state.installation, status: 'cancelled', message: '已取消工具准备' }; state.operationBusy = false; result = { ok: true }; }
     else if (body?.action === 'logout') { state.accounts = []; result = { ok: true, message: '已退出本机' }; }
     else if (body?.action === 'repo') result = { ok: true, repository: { name: body.repository, permission: 'ADMIN', private: false, canWrite: true } };
     else if (body?.action === 'ssh') result = { ok: true, success: true, login: 'other', message: 'SSH 身份 other' };
@@ -193,4 +196,41 @@ test('仓库结果用可读权限展示，输入变更后清除过时结果', as
     await act(async () => { setter.call(input, 'one/other'); Simulate.change(input); });
     assert.ok(!f.dom.window.document.body.textContent.includes('管理员'));
   } finally { await f.close(); }
+});
+
+test('首次使用一键准备显示进度，可取消并重试，不触发账号授权', async () => {
+ const f=fixture({ghFound:false,accounts:[],setup:{supported:true,platform:'macOS',arch:'ARM64'}});
+ try {
+  await f.render();
+  assert.match(f.dom.window.document.body.textContent,/准备工具.*登录账号.*开始使用/);
+  assert.equal(f.button('登录 / 添加账号'),undefined);
+  await f.click('一键准备工具');
+  assert.deepEqual(f.requests.find((body)=>body?.action==='install'),{action:'install',confirmed:true});
+  assert.equal(f.dom.window.document.querySelector('[role="progressbar"]').getAttribute('aria-valuenow'),'25');
+  await f.click('取消准备');
+  assert.equal(f.requests.find((body)=>body?.action==='cancel-install').id,'install-job');
+  assert.match(f.dom.window.document.body.textContent,/已取消工具准备/);
+  assert.ok(f.button('一键准备工具'));
+  assert.ok(!f.requests.some((body)=>body?.action==='login'));
+ } finally {await f.close();}
+});
+test('手动安装重新检测后直接进入连接步骤；失败有手动入口', async () => {
+ const f=fixture({ghFound:false,accounts:[],setup:{supported:true,platform:'macOS',arch:'ARM64'},installation:{status:'failed',message:'网络暂不可用'}});
+ try {
+  await f.render();assert.ok(f.button('重新准备工具'));
+  assert.match(f.dom.window.document.querySelector('[role="alert"]').textContent,/网络暂不可用/);
+  assert.ok(f.dom.window.document.querySelector('a[href="https://cli.github.com/"]'));
+  f.state.ghFound=true;f.state.installation={status:'completed'};
+  await f.click('我已安装，重新检测');
+  assert.ok(f.button('连接 GitHub 账号'));
+  assert.ok(!f.button('一键准备工具'));
+  await f.click('连接 GitHub 账号');
+  assert.ok(f.button('开始网页授权'));
+  assert.ok(!f.requests.some((body)=>body?.action==='install'||body?.action==='login'));
+ } finally {await f.close();}
+});
+test('不支持的系统给出手动引导，已有账号不显示准备卡', async () => {
+ const f=fixture({ghFound:false,accounts:[],setup:{supported:false,platform:'other',arch:'other'}});
+ try {await f.render();assert.equal(f.button('一键准备工具'),undefined);assert.ok(f.dom.window.document.querySelector('a').textContent.includes('官方安装'));} finally {await f.close();}
+ const existing=fixture();try{await existing.render();assert.equal(existing.dom.window.document.querySelector('.ga-setup'),null);}finally{await existing.close();}
 });

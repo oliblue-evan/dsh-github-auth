@@ -24,6 +24,8 @@ export function createHandler(manager, nonce) {
       let result;
       switch (body.action) {
         case 'refresh': result = await manager.state(true); break;
+        case 'install': result = await manager.install(body.confirmed); break;
+        case 'cancel-install': result = manager.cancelInstall(body.id); break;
         case 'login': result = await manager.login(body.confirmed); break;
         case 'cancel': result = manager.cancel(body.id); break;
         case 'switch': result = await manager.switchAccount(body.login, body.confirmed); break;

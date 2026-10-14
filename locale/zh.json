@@ -1,1 +1,6 @@
-{"meta":{"title":"GitHub 授权","description":"管理本机 GitHub CLI 授权：账号、权限、网页登录、切换与退出；分别检查 API、SSH 和仓库权限。"}}
+{
+  "meta": {
+    "title": "GitHub 授权",
+    "description": "一键准备工具并登录 GitHub；管理账号、权限与本机退出，检查 SSH 和仓库访问。"
+  }
+}

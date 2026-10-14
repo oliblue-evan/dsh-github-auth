@@ -52,3 +52,14 @@ test('跨站与超大请求不执行命令', async () => {
   assert.equal((await call(handler, {}, { origin: 'https://evil.com' })).status, 403);
   assert.equal((await call(handler, { blob: 'x'.repeat(9000) }, { 'x-dsh-github-nonce': 'nonce' })).status, 400);
 });
+
+test('工具准备接口同样要求同源、nonce 和明确点击', async () => {
+ let installed=0;
+ const handler=createHandler({install:async(confirmed)=>{if(confirmed!==true)throw new Error('confirm');installed++;return {installation:{status:'running'}};}},'nonce');
+ assert.equal((await call(handler,{action:'install',confirmed:true})).status,403);
+ assert.equal((await call(handler,{action:'install',confirmed:true},{'x-dsh-github-nonce':'nonce',origin:'https://evil.com'})).status,403);
+ assert.equal((await call(handler,{action:'install'},{'x-dsh-github-nonce':'nonce'})).status,400);
+ assert.equal(installed,0);
+ assert.equal((await call(handler,{action:'install',confirmed:true},{'x-dsh-github-nonce':'nonce'})).status,200);
+ assert.equal(installed,1);
+});
