@@ -1,7 +1,6 @@
 {
   "name": "dsh-github-auth",
   "version": "0.3.0",
-  "private": true,
   "type": "module",
   "main": "./index.js",
   "description": "一键准备工具并登录 GitHub；管理账号、权限与本机退出，检查 SSH 和仓库访问。",
